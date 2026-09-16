@@ -8,12 +8,16 @@ from pathlib import Path
 import os
 from datetime import timedelta
 
+from dotenv import load_dotenv
+
 
 # ============================================================
 # BASE DIRECTORY
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+load_dotenv(BASE_DIR / ".env")
 
 
 # ============================================================
@@ -305,9 +309,12 @@ if not DOCUMENT_SIGNING_PUBLIC_KEY:
         DOCUMENT_SIGNING_PUBLIC_KEY = public_key_path.read_text()
 
 
-OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
+GEMINI_API_KEY = os.environ.get(
+    "GEMINI_API_KEY",
+    "",
+)
 
-OLLAMA_MODEL = "llama3.2"
-
-
-
+GEMINI_MODEL = os.environ.get(
+    "GEMINI_MODEL",
+    "ggemini-3.8-flash",
+)

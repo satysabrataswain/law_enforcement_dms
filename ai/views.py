@@ -42,35 +42,61 @@ from .serializers import (
 # SETTINGS
 # ============================================================
 
-OLLAMA_URL = getattr(
+GEMINI_API_KEY = getattr(
     settings,
-    "OLLAMA_URL",
-    "http://127.0.0.1:11434/api/generate",
+    "GEMINI_API_KEY",
+    "",
 )
 
-OLLAMA_MODEL = getattr(
+GEMINI_MODEL = getattr(
     settings,
-    "OLLAMA_MODEL",
-    "llama3.2",
+    "GEMINI_MODEL",
+    "gemini-1.5-flash",
+)
+
+GEMINI_URL_TEMPLATE = (
+    "https://generativelanguage.googleapis.com/"
+    "v1beta/models/{model}:generateContent"
 )
 
 
 # ============================================================
-# OLLAMA
+# GEMINI
 # ============================================================
 
-def ask_ollama(prompt):
+def ask_gemini(prompt):
     """
-    Send prompt to Ollama and return generated text response.
+    Send prompt to Google Gemini API and return generated
+    text response.
     """
+
+    if not GEMINI_API_KEY:
+        raise RuntimeError(
+            "GEMINI_API_KEY is not configured. "
+            "Please set it in settings or as an "
+            "environment variable."
+        )
+
+    url = GEMINI_URL_TEMPLATE.format(
+        model=GEMINI_MODEL
+    )
 
     try:
         response = requests.post(
-            OLLAMA_URL,
+            url,
+            params={
+                "key": GEMINI_API_KEY,
+            },
             json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "text": prompt,
+                            }
+                        ]
+                    }
+                ],
             },
             timeout=180,
         )
@@ -79,30 +105,186 @@ def ask_ollama(prompt):
 
         data = response.json()
 
-        result = data.get("response", "")
+        candidates = data.get(
+            "candidates", []
+        )
+
+        if not candidates:
+            block_reason = (
+                data.get("promptFeedback", {})
+                .get("blockReason")
+            )
+
+            if block_reason:
+                raise RuntimeError(
+                    "Gemini blocked this request: "
+                    f"{block_reason}"
+                )
+
+            raise RuntimeError(
+                "Gemini returned no candidates."
+            )
+
+        parts = (
+            candidates[0]
+            .get("content", {})
+            .get("parts", [])
+        )
+
+        result = "".join(
+            part.get("text", "")
+            for part in parts
+        ).strip()
 
         if not result:
             raise RuntimeError(
-                "Ollama returned an empty response."
+                "Gemini returned an empty response."
             )
 
-        return result.strip()
+        return result
 
     except requests.exceptions.ConnectionError:
         raise RuntimeError(
-            "Ollama is not running. "
-            "Please start Ollama and try again."
+            "Unable to connect to Gemini API. "
+            "Please check your internet connection."
         )
 
     except requests.exceptions.Timeout:
         raise RuntimeError(
-            "Ollama request timed out."
+            "Gemini API request timed out."
+        )
+
+    except requests.exceptions.HTTPError as error:
+        status_code = (
+            error.response.status_code
+            if error.response is not None
+            else ""
+        )
+
+        detail = ""
+
+        try:
+            detail = (
+                error.response.json()
+                .get("error", {})
+                .get("message", "")
+            )
+        except Exception:
+            pass
+
+        raise RuntimeError(
+            f"Gemini API error ({status_code}): "
+            f"{detail or error}"
         )
 
     except requests.exceptions.RequestException as error:
         raise RuntimeError(
-            f"Unable to connect to Ollama: {error}"
+            f"Unable to connect to Gemini API: {error}"
         )
+
+
+# ============================================================
+# AI OUTPUT SANITIZATION
+# ============================================================
+#
+# The prompts ask the model to "Return ONLY plain text" /
+# "Do NOT return JSON", but small local models (llama3.2 via
+# Ollama) sometimes ignore that instruction anyway — especially
+# on the case analyze/summarize endpoints, where a large JSON
+# blob of case data is embedded inside the prompt and the model
+# ends up echoing that same JSON structure back.
+#
+# Without this step, that raw JSON (or a ```json fenced block)
+# was being sent straight through to the frontend, which expects
+# plain readable text for these endpoints. sanitize_ai_text()
+# guarantees a plain-text string no matter what the model did.
+# ============================================================
+
+def strip_code_fences(text):
+    """
+    Remove a leading/trailing Markdown code fence
+    (``` or ```json) if the model wrapped its answer in one.
+    """
+
+    text = text.strip()
+
+    if not text.startswith("```"):
+        return text
+
+    lines = text.split("\n")
+
+    # Drop the opening fence line (``` or ```json)
+    lines = lines[1:]
+
+    # Drop a trailing fence line if present
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    elif lines and lines[-1].strip().endswith("```"):
+        lines[-1] = lines[-1].strip()[:-3]
+
+    return "\n".join(lines).strip()
+
+
+def json_to_plain_text(data, indent=0):
+    """
+    Recursively flatten a JSON-like structure (dict/list) into
+    readable plain text, for the case where the model returned
+    JSON despite being told to return plain text.
+    """
+
+    prefix = "  " * indent
+    lines = []
+
+    if isinstance(data, dict):
+        for key, value in data.items():
+            label = str(key).replace("_", " ").replace("-", " ").strip().title()
+
+            if isinstance(value, (dict, list)) and value:
+                lines.append(f"{prefix}{label}:")
+                lines.append(json_to_plain_text(value, indent + 1))
+            elif value in (None, "", [], {}):
+                lines.append(f"{prefix}{label}: Not available")
+            else:
+                lines.append(f"{prefix}{label}: {value}")
+
+    elif isinstance(data, list):
+        if not data:
+            lines.append(f"{prefix}Not available")
+        for item in data:
+            if isinstance(item, (dict, list)):
+                lines.append(json_to_plain_text(item, indent))
+            else:
+                lines.append(f"{prefix}- {item}")
+
+    else:
+        lines.append(f"{prefix}{data}")
+
+    return "\n".join(line for line in lines if line.strip())
+
+
+def sanitize_ai_text(result):
+    """
+    Make sure a "plain text" AI endpoint always sends plain text
+    to the frontend, even if the model ignored the prompt's
+    "Do NOT return JSON" instruction.
+    """
+
+    if not result:
+        return result
+
+    cleaned = strip_code_fences(result)
+
+    try:
+        parsed = json.loads(cleaned)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return cleaned
+
+    if isinstance(parsed, (dict, list)):
+        readable = json_to_plain_text(parsed)
+        return readable if readable.strip() else cleaned
+
+    # It parsed as JSON but was just a plain string/number
+    return str(parsed)
 
 
 # ============================================================
@@ -1167,8 +1349,12 @@ class AIDocumentAnalyzeView(APIView):
                 case_data
             )
 
-            result = ask_ollama(
+            result = ask_gemini(
                 prompt
+            )
+
+            result = sanitize_ai_text(
+                result
             )
 
         except RuntimeError as error:
@@ -1252,8 +1438,12 @@ class AIDocumentSummarizeView(APIView):
                 case_data
             )
 
-            result = ask_ollama(
+            result = ask_gemini(
                 prompt
+            )
+
+            result = sanitize_ai_text(
+                result
             )
 
         except RuntimeError as error:
@@ -1362,8 +1552,12 @@ TEXT:
 
         try:
 
-            result = ask_ollama(
+            result = ask_gemini(
                 prompt
+            )
+
+            result = sanitize_ai_text(
+                result
             )
 
         except RuntimeError as error:
@@ -1443,8 +1637,12 @@ TEXT:
 
         try:
 
-            result = ask_ollama(
+            result = ask_gemini(
                 prompt
+            )
+
+            result = sanitize_ai_text(
+                result
             )
 
         except RuntimeError as error:
@@ -1528,7 +1726,7 @@ TEXT:
 
         try:
 
-            result = ask_ollama(
+            result = ask_gemini(
                 prompt
             )
 
@@ -1633,7 +1831,7 @@ TEXT:
 
         try:
 
-            result = ask_ollama(
+            result = ask_gemini(
                 prompt
             )
 
