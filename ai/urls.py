@@ -7,6 +7,7 @@ from .views import (
     AIExtractView,
     AIDocumentAnalyzeView,
     AIDocumentSummarizeView,
+    AIAppAssistantView,
 )
 
 
@@ -61,5 +62,22 @@ urlpatterns = [
         "extract/",
         AIExtractView.as_view(),
         name="ai-extract",
+    ),
+
+
+    # ========================================================
+    # APP ASSISTANT / HELP CHATBOT
+    # ========================================================
+
+    # Example:
+    # POST /api/ai/assistant/
+    # body: { "message": "document kaise upload karu?",
+    #         "history": [{"role": "user", "text": "..."},
+    #                      {"role": "assistant", "text": "..."}] }
+
+    path(
+        "assistant/",
+        AIAppAssistantView.as_view(),
+        name="ai-assistant",
     ),
 ]

@@ -1,10 +1,12 @@
 import json
+import os
 import requests
 
 from django.conf import settings
 from django.http import Http404
 
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -1866,6 +1868,174 @@ TEXT:
                     "Information extraction completed.",
                 "data":
                     extracted_data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+# ============================================================
+# APP ASSISTANT / HELP CHATBOT
+# ============================================================
+#
+# Answers "how do I use the app / where do I click" questions
+# from the frontend. It is grounded in ai/app_guide.txt, so
+# keep that file up to date with the real frontend screens
+# and button names.
+# ============================================================
+
+APP_GUIDE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "app_guide.txt",
+)
+
+
+def load_app_guide():
+    """
+    Read the app usage knowledge base from disk. Returns an
+    empty string if the file is missing, so the assistant
+    still works (just without grounded instructions).
+    """
+
+    try:
+        with open(APP_GUIDE_PATH, "r", encoding="utf-8") as file:
+            return file.read()
+    except OSError:
+        return ""
+
+
+def build_assistant_prompt(message, history, guide_text):
+    """
+    Build the prompt for the app-usage help chatbot, combining
+    the app guide, prior turns of the conversation, and the
+    user's latest message.
+    """
+
+    history_lines = []
+
+    for turn in history:
+        if not isinstance(turn, dict):
+            continue
+
+        role = turn.get("role", "user")
+        text = turn.get("text", "")
+
+        if not text:
+            continue
+
+        speaker = "User" if role == "user" else "Assistant"
+        history_lines.append(f"{speaker}: {text}")
+
+    history_text = (
+        "\n".join(history_lines)
+        if history_lines
+        else "(no previous messages)"
+    )
+
+    return f"""
+You are the in-app help assistant for SDDMS (Suspect/Document
+Digital Management System), a police and investigation case
+management web application.
+
+Your ONLY job is to help the logged-in user understand HOW TO
+USE the app: which page to go to, which button to click, and
+what happens next. Use the APP GUIDE below as your source of
+truth for page names, button labels and steps.
+
+Rules:
+
+- Answer ONLY using the APP GUIDE below. If the guide does not
+  cover the question, say you're not sure and suggest the
+  closest relevant section instead of guessing.
+- Give clear, numbered, step-by-step instructions when the
+  user asks "how do I do X".
+- Keep answers short and practical. No headings, no markdown,
+  no JSON — plain conversational text only.
+- Do not discuss anything unrelated to using this app (no
+  general knowledge, no coding help, no legal advice).
+
+APP GUIDE:
+
+{guide_text}
+
+CONVERSATION SO FAR:
+
+{history_text}
+
+USER'S NEW MESSAGE:
+
+{message}
+
+Reply with your answer only, in plain text.
+"""
+
+
+class AIAppAssistantView(APIView):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def post(self, request):
+
+        message = (
+            request.data.get("message")
+            or ""
+        ).strip()
+
+        if not message:
+            return Response(
+                {
+                    "success": False,
+                    "message": "'message' is required.",
+                    "data": None,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        history = request.data.get("history") or []
+
+        if not isinstance(history, list):
+            history = []
+
+        # Keep only the last few turns so the prompt stays small.
+        history = history[-10:]
+
+        guide_text = load_app_guide()
+
+        prompt = build_assistant_prompt(
+            message,
+            history,
+            guide_text,
+        )
+
+        try:
+
+            result = ask_gemini(
+                prompt
+            )
+
+            result = sanitize_ai_text(
+                result
+            )
+
+        except RuntimeError as error:
+
+            return Response(
+                {
+                    "success": False,
+                    "message": str(error),
+                    "data": None,
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(
+            {
+                "success": True,
+                "message": "Assistant reply generated.",
+                "data": {
+                    "reply": result,
+                },
             },
             status=status.HTTP_200_OK,
         )

@@ -1,0 +1,104 @@
+SDDMS APP USAGE GUIDE
+============================================================
+NOTE FOR DEVELOPER: This file is the knowledge base the AI
+Assistant chatbot uses to answer "how do I use the app /
+where do I click" questions. Edit the sections below so the
+button names, page names and steps match your ACTUAL frontend
+screens. The AI will only be as accurate as this file.
+============================================================
+
+
+1. ACCOUNTS / LOGIN
+------------------------------------------------------------
+- New users register from the Register page (name, email,
+  password). After registering, an admin/staff member must
+  approve the account from the "Pending Verifications" page
+  before the user can log in.
+- Existing users log in from the Login page with email and
+  password.
+- A logged-in user can view/update their own profile from the
+  "My Profile" page (top-right menu).
+- Admins manage all users from the "Users" page: add new
+  users, change a user's role, activate/deactivate accounts.
+
+
+2. CASES
+------------------------------------------------------------
+- All cases are listed on the "Cases" page.
+- To create a new case, click the "+ New Case" button, fill
+  in the case details form, and click "Save".
+- Click on any case row to open the case detail page, where
+  you can see its complaints, documents, evidence, witness
+  statements and AI analysis/summary in one place.
+- Use the "Edit" button on the case detail page to update case
+  information, or "Delete" to remove a case.
+
+
+3. COMPLAINTS
+------------------------------------------------------------
+- Complaints are listed under a case's detail page (or under
+  the "Complaints" page).
+- Click "+ Add Complaint" to file a new complaint, fill the
+  form, and click "Save".
+- Click a complaint row to view or edit its details.
+
+
+4. DOCUMENTS
+------------------------------------------------------------
+- Documents for a case are managed from the case's "Documents"
+  tab.
+- Click "Upload Document" to upload a new file. Choose the
+  file, add a title/description, and click "Upload".
+- Click a document to view its details, download it, see its
+  version history, or upload a new version.
+- Use "Share" to share a document with another user, or
+  "Archive" to archive it.
+- Use "Sign" to digitally sign a document, and "Verify
+  Signature" / "Verify Integrity" to confirm it hasn't been
+  tampered with.
+- The "AI Analyze" and "AI Summarize" buttons on a case's
+  documents tab generate an AI-written analysis or summary of
+  all documents in that case.
+
+
+5. EVIDENCE
+------------------------------------------------------------
+- Evidence items are listed under a case's "Evidence" tab.
+- Click "+ Add Evidence" to log new evidence, fill in details
+  (description, custody info), and click "Save".
+- Click an evidence row to view its details or custody
+  transfer history.
+
+
+6. WITNESS STATEMENTS / INVESTIGATIONS
+------------------------------------------------------------
+- Investigations are listed under a case's "Investigation"
+  tab.
+- Click "+ Add Witness Statement" to record a new statement.
+- The investigation history log shows every action taken
+  during the investigation, in order.
+
+
+7. LEGAL / COURT
+------------------------------------------------------------
+- Legal reviews and court hearings for a case are managed from
+  the case's "Legal" tab.
+- Click "+ Schedule Hearing" to add a new court hearing date.
+
+
+8. AI FEATURES
+------------------------------------------------------------
+- On a case's page, "AI Analyze" and "AI Summarize" generate a
+  plain-text analysis / summary of that case's documents.
+- The "Ask AI Assistant" chat button (bottom-right corner on
+  every page) opens this help chatbot, which can answer
+  questions about how to use any part of the app.
+
+
+GENERAL TIPS
+------------------------------------------------------------
+- Most list pages (Cases, Complaints, Evidence, Documents)
+  follow the same pattern: a "+ Add" button top-right to create
+  a new item, and clicking any row opens its details.
+- Only Staff/Admin users can approve verifications, manage
+  users, or change roles.
